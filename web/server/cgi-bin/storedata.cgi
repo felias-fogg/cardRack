@@ -1,5 +1,6 @@
 #!/bin/bash
 read POST_STRING
+echo "$(date) $POST_STRING" > test.txt
 
 IFS="&"
 set -- $POST_STRING
@@ -21,10 +22,12 @@ if [ -f ../data/key.sha ]
 then
    FILE="../data/key.sha"
 else
-   FILE="../data/test.sha" 
+   FILE="../data/testkey.sha" 
 fi
+echo $(date), $TICKETS, $PASSWORD, $(echo -n $PASSWORD | shasum -a 256) > test1.txt
 if [ "$(echo -n $PASSWORD | shasum -a 256)" = "$(cat $FILE)" ]  &&  [ -n "$TICKETS" ]
 then
+echo $(date), "SUCC", $TICKETS, $PASSWORD > test2.txt
     succ="1"
     echo "function tickets() { return $TICKETS }" > ../data/newdata.js
     echo "function timestamp() { return $(date +%s) }" >> ../data/newdata.js
@@ -34,11 +37,6 @@ fi
 
 echo "Content-type: text/html"
 echo ""
-
-echo '<html>'
-echo '<head>'
-echo '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">'
-echo '</head>'
 if [ "$succ" == "1" ]
 then
     echo 'OK'
@@ -46,6 +44,3 @@ else
     echo 'FAIL'
 fi
 
-echo '</html>'
-
-exit 0
