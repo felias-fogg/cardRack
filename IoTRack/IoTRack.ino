@@ -24,12 +24,12 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.2.0" 
+#define VERSION "0.2.1" 
 
 #define CALIB_SENSORS 0
 #define DOMAIN "traeumt-gerade.de"
 #define MAXSENSOR 2
-#define PROX_INT_LOW 200
+#define PROX_INT_LOW 300
 #define PROX_INT_HIGH 500
 
 
@@ -83,16 +83,16 @@ void setup() {
     }
     
     // Enable wait timer
-    //   if ( !sensor.setMode(WAIT, 1) ) {
-    //  Log.error(F("Something went wrong trying to set WEN=1"));
-    // }
+    if ( !sensor.setMode(WAIT, 1) ) {
+      Log.error(F("Something went wrong trying to set WEN=1"));
+    }
 
-    // Set wait time to long
-    if( !sensor.wireWriteDataByte(APDS9930_WTIME, 0) ) {
+    // Set wait time to long (700 ms)
+    if( !sensor.wireWriteDataByte(APDS9930_WTIME, 0x00) ) {
       Log.error(F("Something went wrong trying to set WTIME=0"));
     }
 
-    // set time to 8.4 sec
+    // set time scale to short
     if( !sensor.wireWriteDataByte(APDS9930_CONFIG, 0) ) {
       Log.error(F("Something went wrong trying to set WLONG=0"));
     }
@@ -100,6 +100,11 @@ void setup() {
     // Adjust the Proximity sensor gain
     if ( !sensor.setProximityGain(PGAIN_2X) ) {
       Log.error(F("Something went wrong trying to set PGAIN"));
+    }
+
+    // Setting persistence
+    if ( !sensor.wireWriteDataByte(APDS9930_PERS, 0b01010000) ) { // fir only after 5 meas.
+      Log.error(F("Something went wrong trying to set persistence"));
     }
     
     // Adjust the Proximity LED drive
@@ -177,8 +182,8 @@ void sendStatus(byte slots)
 
 // This is ISR for the IRQ line of the sensors
 ISR(PORTE_PORT_vect) {
-  PORTE.INTFLAGS = 4; //clear flags
   PORTE.PIN2CTRL = 0b00001000;
+  PORTE.INTFLAGS = 4; //clear flags
   isrflag = 1;
 }
 
@@ -194,7 +199,6 @@ void loop() {
        Log.infof(F("Proximity (sensor %d): %d\n\r"), i, proximity_data);
      }
    }
-   // Wait 250 ms before next reading
    delay(1000);
    Log.info("");
 }
