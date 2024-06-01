@@ -23,20 +23,31 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.3.0" 
+#define VERSION "0.3.1" 
 
 #define CALIB_SENSORS 0
 #define DOMAIN "traeumt-gerade.de"
 #define MAXSENSOR 2
 #define PROX_INT_LOW 300
 #define PROX_INT_HIGH 500
+#define SLEEPTIME 480 // sleep time in seconds
 
+#if CALIB_SENSORS
+#define WEN 0    // no wait between two proximity tests
+#define PPERS 0  // no persistence for proximity readings
+#else
+#define WEN 1
+#define PPERS 5
+#endif
 
 #include <Arduino.h>
+#include <mcp9808.h>
+#include <veml3328.h>
 #include <http_client.h>
 #include <led_ctrl.h>
 #include <log.h>
 #include <lte.h>
+#include <low_power.h>
 #include "src/FlexWire.h"
 #include "src/myAPDS9930.h"
 
@@ -44,7 +55,13 @@ FlexWire flex;
 APDS9930 sensor;
 
 volatile bool isrflag = false;
+volatile bool ledoff = true;
+volatile int cnt = 0;
 uint16_t proximity_data = 0;
+uint8_t tickets;
+enum class Error { NONE, CONNECTION, SENSOR };
+volatile Error globalerror = Error::NONE;
+
 
 const uint8_t sdapin[MAXSENSOR] = { PIN_PD1, PIN_PD3 }; //A1, A2
 const uint8_t sclpin = PIN_PD6; //A0
@@ -57,151 +74,220 @@ void setup() {
 
   Log.begin(115200);
   Log.setLogLevel(LogLevel::DEBUG);
-  Log.info(F("Initializing sensors"));
+  Log.infof(F("IoTRack Version %s\n\r"), VERSION);
+
+  // Make sure sensors are turned off
+  Veml3328.begin();
+  Mcp9808.begin();
+  Veml3328.shutdown();
+  Mcp9808.shutdown();
+
+  // init sensors
+  initializeSensors();
+  
+  
+#if !CALIB_SENSORS
+  // Now we configure the low power module for power down configuration, where
+  // the cellular modem and the CPU will be powered down
+  LowPower.configurePowerDown();
+
+  // init HTTP client
+  initializeHTTP();
+
+  // setup interrupt handling
+  pinMode(irqpin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(irqpin), sensorIRS_callback, FALLING);
+#endif
+
+  // setup extra timer for blinking
+  TCB3.CCMP = 30000;
+  TCB3.CTRLB = 0;
+  TCB3.CTRLA = 5;
+  TCB3.INTCTRL = 1;
+  
+  Log.info(F("Setup completed"));
+}
+
+void loop() {
+  tickets = readSensors();
+  Log.infof(F("#tickets: %d\n\r"),tickets);
+  delay(1000);
+#if !CALIB_SENSORS
+  sendData(tickets);
+  delay(1000);
+  if (globalerror != Error::NONE) while (1);
+  LowPower.powerDown(SLEEPTIME);
+#endif
+}
+
+// periodic interrupt to signal data transfer and error conditions
+ISR(TCB3_INT_vect) {
+  if (cnt-- <= 0) {
+    ledoff = !ledoff;
+    if (globalerror == Error::NONE) cnt = 6;
+    else cnt = 1;
+  }
+  digitalWrite(ledpin, ledoff);
+  TCB3.INTFLAGS = 1;
+}
+
+// This is the IRS for the IRQ line of the sensors
+void sensorIRS_callback(void) {
+  isrflag = 1;
+}
+
+void initializeSensors(void) {
   for (uint8_t i=0; i < MAXSENSOR; i++) {
+    Log.debugf(F("Sensor %d initialization\n\r"),i);
     flex.setPins(sdapin[i], sclpin);
     if (!sensor.init()) {
       Log.errorf(F("Error while initializing sensor %d\n\r"),i);
-    } else {
-      Log.infof(F("Sensor %d has been initialized\n\r"),i);
+      globalerror = Error::SENSOR;
     }
     // Start running the APDS-9930 proximity sensor 
-    if ( sensor.enableProximitySensor(!CALIB_SENSORS) ) {
-      Log.infof(F("Proximity sensor %d is now enabled\n\r"),i);
-    } else {
+    if ( !sensor.enableProximitySensor(!CALIB_SENSORS) ) {
       Log.errorf(F("Something went wrong while enabling sensor %d\n\r"),i);
+      globalerror = Error::SENSOR;
     }
     
-#if !CALIB_SENSORS
     // Set proximity interrupt thresholds
     if ( !sensor.setProximityIntLowThreshold(PROX_INT_LOW) ) {
       Log.error(F("Error writing low threshold"));
+      globalerror = Error::SENSOR;
     }
     if ( !sensor.setProximityIntHighThreshold(PROX_INT_HIGH) ) {
       Log.error(F("Error writing high threshold"));
     }
     
     // Enable wait timer
-    if ( !sensor.setMode(WAIT, 1) ) {
+    if ( !sensor.setMode(WAIT, WEN) ) {
       Log.error(F("Something went wrong trying to set WEN=1"));
+      globalerror = Error::SENSOR;
     }
 
     // Set wait time to long (700 ms)
     if( !sensor.wireWriteDataByte(APDS9930_WTIME, 0x00) ) {
       Log.error(F("Something went wrong trying to set WTIME=0"));
+      globalerror = Error::SENSOR;
     }
 
     // set time scale to short
     if( !sensor.wireWriteDataByte(APDS9930_CONFIG, 0) ) {
       Log.error(F("Something went wrong trying to set WLONG=0"));
+      globalerror = Error::SENSOR;
     }
-#endif
+
     // Adjust the Proximity sensor gain
     if ( !sensor.setProximityGain(PGAIN_2X) ) {
       Log.error(F("Something went wrong trying to set PGAIN"));
+      globalerror = Error::SENSOR;
     }
 
     // Setting persistence
-    if ( !sensor.wireWriteDataByte(APDS9930_PERS, 0b01010000) ) { // fir only after 5 meas.
+    if ( !sensor.wireWriteDataByte(APDS9930_PERS, (PPERS<<4)) ) { // IRQ only after 5 meas.
       Log.error(F("Something went wrong trying to set persistence"));
+      globalerror = Error::SENSOR;
     }
     
     // Adjust the Proximity LED drive
     if ( !sensor.setLEDDrive(LED_DRIVE_12_5MA) ) {
       Log.error(F("Something went wrong trying to set LED Drive"));
+      globalerror = Error::SENSOR;
     }
 
     // Clear interrupt flag
     if ( !sensor.clearProximityInt() ) {
       Log.error(F("Error clearing interrupt"));
+      globalerror = Error::SENSOR;
     }
   }
-#if !CALIB_SENSORS
-  pinMode(irqpin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(irqpin), sensorIRS_callback, FALLING);
-#endif
+  Log.debug(F("All sensors initialized"));
 }
 
-#if !CALIB_SENSORS // run sketch in ordinary mode
-void loop() {
-  if (isrflag) {
-    // Read the proximity value
-    for (uint8_t i=0; i < MAXSENSOR; i++) {
-      flex.setPins(sdapin[i], sclpin);
-      if ( !sensor.readProximity(proximity_data) ) {
-	Log.error(F("Error reading proximity value"));
-      } else {
-	Log.infof(F("Proximity (sensor %d): %d\n\r"), i, proximity_data);
+int readSensors(void) {
+  int high = 0;
+
+  // Read the proximity value
+  for (uint8_t i=0; i < MAXSENSOR; i++) {
+    flex.setPins(sdapin[i], sclpin);
+    if ( !sensor.readProximity(proximity_data) ) {
+      Log.errorf(F("Error reading proximity value from sensor %d\n\r"),i);
+      globalerror = Error::SENSOR;
+    } 
+    Log.debugf(F("Proximity (sensor %d): %d\n\r"), i, proximity_data);
+    if (proximity_data < PROX_INT_LOW) {
+      if (!sensor.setProximityIntLowThreshold(0)) {
+	Log.errorf(F("Error setting low proximity threshold for sensor %d\n\r"),i);
+	globalerror = Error::SENSOR;
       }
-      if (proximity_data < PROX_INT_LOW) {
-	sensor.setProximityIntLowThreshold(0);
-	sensor.setProximityIntHighThreshold(PROX_INT_HIGH);
-      } else if (proximity_data > PROX_INT_HIGH) {
-	sensor.setProximityIntLowThreshold(PROX_INT_LOW);
-	sensor.setProximityIntHighThreshold(1023);
-      }	
-      if ( !sensor.clearProximityInt() ) {
-	Log.error(F("Error clearing interrupt"));
+      if (!sensor.setProximityIntHighThreshold(PROX_INT_HIGH)) {
+	Log.errorf(F("Error setting high proximity threshold for sensor %d\n\r"),i);
+	globalerror = Error::SENSOR;
       }
+    } else if (proximity_data > PROX_INT_HIGH) {
+      high++;
+      if (!sensor.setProximityIntLowThreshold(PROX_INT_LOW)) {
+	Log.errorf(F("Error setting low proximity threshold for sensor %d\n\r"),i);
+	globalerror = Error::SENSOR;
+      }
+      if (!sensor.setProximityIntHighThreshold(1023)) {
+	Log.errorf(F("Error setting high proximity threshold for sensor %d\n\r"),i);
+	globalerror = Error::SENSOR;
+      }
+    }	
+    if ( !sensor.clearProximityInt() ) {
+      Log.error(F("Error clearing interrupt"));
+      globalerror = Error::SENSOR;
     }
-    Log.info("");
-    digitalWrite(ledpin,LOW);
-    delay(1000);
-    digitalWrite(ledpin,HIGH);
-    isrflag = false;
   }
+  return high;
 }
 
-void sendStatus(byte slots)
-{
-  // Start LTE modem and connect to the operator
-  if (!Lte.begin()) {
-    Log.error(F("Failed to connect to the operator"));
-    return;
-  }
-
-  Log.infof(F("Connected to operator: %s\r\n"), Lte.getOperator().c_str());
-
+void initializeHTTP(void) {
   if (!HttpClient.configure(DOMAIN, 443, true)) {
-    Log.info(F("Failed to configure https client\r\n"));
+    Log.error(F("Failed to configure https client\r\n"));
+    globalerror = Error::CONNECTION;
     return;
   }
+  Log.debug(F("Configured for HTTPS"));
+}
 
-  Log.info(F("Configured to HTTPS"));
+/**
+ * @brief Sends a payload with latitude, longitude and the timestamp.
+ */
+void sendData(int slots) {
+  char data[80];
 
-  HttpResponse response = HttpClient.post("/cgi-bin/storedata.cgi", "KEY=123&TICKETS=3");
-  Log.infof(F("POST - HTTP status code: %u, data size: %u\r\n"),
+  sprintf_P(data, PSTR("KEY=123&TICKETS=%d"), slots);
+
+  connectToNetwork();
+
+  Log.debugf(F("Data to send: %s\n\r"), data);
+  HttpResponse response = HttpClient.post("/cgi-bin/storedata.cgi", data);
+  Log.debugf(F("POST - HTTP status code: %u, data size: %u\r\n"),
 	    response.status_code,
 	    response.data_size);
-
-  // Add some extra bytes for termination
-  // String body =
   HttpClient.readBody(response.data_size + 16);
-
-  //  if (body != "") {
-  //  Log.infof(F("Body: %s\r\n"), body.c_str());
-  //}
+  Log.infof(F("Data transmitted: %d\n\r"), slots);
 }
 
-// This is ISR for the IRQ line of the sensors
-void sensorIRS_callback(void) {
-  isrflag = 1;
+/**
+ * @brief Connects to the network operator. Will block until connection is
+ * achieved.
+ */
+void connectToNetwork() {
+  int retry = 100; // connecttion tries before we go into error state
+  // If we already are connected, don't do anything
+  if (!Lte.isConnected()) {
+    while (!Lte.begin() && retry--) {}
+    if (!Lte.isConnected()) {
+      globalerror = Error::CONNECTION;
+      while (!Lte.begin()) { delay(30000); }
+    }
+    globalerror = Error::NONE;
+    Log.infof(F("Connected to operator: %s\r\n"),
+	      Lte.getOperator().c_str());
+  }
 }
 
-#else // run sketch to gather sensor values
-
-void loop() {
-   // Read the proximity value
-   for (uint8_t i=0; i < MAXSENSOR; i++) {
-     flex.setPins(sdapin[i], sclpin);
-     if ( !sensor.readProximity(proximity_data) ) {
-       Log.error(F("Error reading proximity value"));
-     } else {
-       Log.infof(F("Proximity (sensor %d): %d\n\r"), i, proximity_data);
-     }
-   }
-   delay(1000);
-   Log.info("");
-}
-#endif
 

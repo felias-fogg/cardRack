@@ -1,0 +1,22 @@
+Changelog for IoTRack
+---------------------
+
+V0.2.0
+- First version using the sensors
+
+V0.2.1
+- Using persistence for the proximity interrupts
+  5 consecutive measurements with a cycle time of 700 ms 
+
+V0.3.0
+- switched from ISR to attachInterrupt; this became necessary because
+  with "attachInterrupt: Only enabled ports" (which you need when using ISRs)
+  all the example scripts for the board crashed. So, you defintely need to set
+  attachInterrupt: On all pins, with new implementation"!
+  
+V0.3.1
+- count number of tickets present
+- integrate LTE-M sending
+- error handling: blink fast
+- blink slowly when awake
+
