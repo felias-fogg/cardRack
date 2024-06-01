@@ -7,7 +7,6 @@
 // Wire Library mode: 2x Wire, Master or Slave
 // Programmer: Curiosity Nano
 // printf: Full, 2.6k, print floats
-// attachInterrupt: only on attached ports
 
 // Pin mapping:
 // A0 = PIN_PD6
@@ -24,7 +23,7 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.2.1" 
+#define VERSION "0.3.0" 
 
 #define CALIB_SENSORS 0
 #define DOMAIN "traeumt-gerade.de"
@@ -111,10 +110,15 @@ void setup() {
     if ( !sensor.setLEDDrive(LED_DRIVE_12_5MA) ) {
       Log.error(F("Something went wrong trying to set LED Drive"));
     }
+
+    // Clear interrupt flag
+    if ( !sensor.clearProximityInt() ) {
+      Log.error(F("Error clearing interrupt"));
+    }
   }
-#if !CALIB_SENSORS  
-  pinMode(PIN_PE2, INPUT_PULLUP);
-  PORTE.PIN2CTRL = 0b00001101; // no pullup, interrupt on LOW
+#if !CALIB_SENSORS
+  pinMode(irqpin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(irqpin), sensorIRS_callback, FALLING);
 #endif
 }
 
@@ -145,7 +149,6 @@ void loop() {
     delay(1000);
     digitalWrite(ledpin,HIGH);
     isrflag = false;
-    PORTE.PIN2CTRL = 0b00001101;
   }
 }
 
@@ -181,9 +184,7 @@ void sendStatus(byte slots)
 }
 
 // This is ISR for the IRQ line of the sensors
-ISR(PORTE_PORT_vect) {
-  PORTE.PIN2CTRL = 0b00001000;
-  PORTE.INTFLAGS = 4; //clear flags
+void sensorIRS_callback(void) {
   isrflag = 1;
 }
 
