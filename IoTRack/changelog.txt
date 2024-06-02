@@ -20,3 +20,7 @@ V0.3.1
 - error handling: blink fast
 - blink slowly when awake
 
+V0.3.2
+- change status LED from D13 to D12 and toggle between input and output (LOW)
+- added a check for being in power down mode (in_power_down()) in order to avoid switching
+  off the LED after it has been assigned the sleep state value

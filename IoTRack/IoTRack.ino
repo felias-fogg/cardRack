@@ -23,14 +23,14 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.3.1" 
+#define VERSION "0.3.2" 
 
 #define CALIB_SENSORS 0
 #define DOMAIN "traeumt-gerade.de"
 #define MAXSENSOR 2
 #define PROX_INT_LOW 300
 #define PROX_INT_HIGH 500
-#define SLEEPTIME 480 // sleep time in seconds
+#define SLEEPTIME 60*120 // sleep time in seconds
 
 #if CALIB_SENSORS
 #define WEN 0    // no wait between two proximity tests
@@ -66,7 +66,8 @@ volatile Error globalerror = Error::NONE;
 const uint8_t sdapin[MAXSENSOR] = { PIN_PD1, PIN_PD3 }; //A1, A2
 const uint8_t sclpin = PIN_PD6; //A0
 const uint8_t irqpin = PIN_PE2; //D5 (note: this is a fully asynchronous pin!)
-const uint8_t ledpin = PIN_PB2; //D13 = LED4
+const uint8_t ledpin = PIN_PA7; //D12
+const uint8_t lowqpin = PIN_PB4; // controls the LDO regulator (signalling power down)
 
 void setup() {
   LedCtrl.begin();
@@ -114,23 +115,33 @@ void loop() {
   delay(1000);
 #if !CALIB_SENSORS
   sendData(tickets);
-  delay(1000);
   if (globalerror != Error::NONE) while (1);
+  delay(1000);
   LowPower.powerDown(SLEEPTIME);
 #endif
 }
 
 // periodic interrupt to signal data transfer and error conditions
 ISR(TCB3_INT_vect) {
+  if (in_power_down()) {
+    pinMode(ledpin, INPUT);
+    return;
+  }
   if (cnt-- <= 0) {
     ledoff = !ledoff;
     if (globalerror == Error::NONE) cnt = 6;
     else cnt = 1;
   }
-  digitalWrite(ledpin, ledoff);
+  if (ledoff) pinMode(ledpin, OUTPUT);
+  else pinMode(ledpin, INPUT);
   TCB3.INTFLAGS = 1;
 }
 
+// checks whether we are in the power-down state
+bool in_power_down(void) {
+  return ((SLPCTRL.CTRLA & SLPCTRL_SEN_bm) != 0);
+}
+    
 // This is the IRS for the IRQ line of the sensors
 void sensorIRS_callback(void) {
   isrflag = 1;
