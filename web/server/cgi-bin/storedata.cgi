@@ -1,6 +1,5 @@
 #!/bin/bash
 read POST_STRING
-echo "$(date) $POST_STRING" > test.txt
 
 IFS="&"
 set -- $POST_STRING
@@ -17,20 +16,18 @@ do
     then
 	TICKETS=$2
     fi
+    if [ "$1" == 'LOCATION' ]
+    then
+	LOCATION=$2
+    fi
 done
-if [ -f ../data/key.sha ]
+FILE="../data/${LOCATION}.sha" 
+
+if [ -f $FILE ] && [ "$(echo -n $PASSWORD | shasum -a 256)" = "$(cat $FILE)" ]  &&  [ -n "$TICKETS" ] && ! [ -z "${TICKETS##*[!0-9]*}" ]
 then
-   FILE="../data/key.sha"
-else
-   FILE="../data/testkey.sha" 
-fi
-echo $(date), $TICKETS, $PASSWORD, $(echo -n $PASSWORD | shasum -a 256) > test1.txt
-if [ "$(echo -n $PASSWORD | shasum -a 256)" = "$(cat $FILE)" ]  &&  [ -n "$TICKETS" ]
-then
-echo $(date), "SUCC", $TICKETS, $PASSWORD > test2.txt
     succ="1"
-    echo "function tickets() { return $TICKETS }" > ../data/newdata.js
-    echo "function timestamp() { return $(date +%s) }" >> ../data/newdata.js
+    echo $TICKETS > ../data/${LOCATION}.txt
+    echo $(date +%s) >> ../data/${LOCATION}.txt
 else
     succ="0"
 fi

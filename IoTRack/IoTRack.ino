@@ -23,10 +23,24 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.3.2" 
+#define VERSION "0.9.0" 
 
 #define CALIB_SENSORS 0
-#define DOMAIN "traeumt-gerade.de"
+
+// define the right LOCATION!
+#define EXAMPLE_LOC 0
+#define SCHALLSTADT_LOC 1
+#define MENGEN_LOC 2
+
+#define LOC SCHALLSTADT_LOC
+#if LOC == EXAMPLE_LOC
+#include "example.h"
+#elif LOC == SCHALLSTADT_LOC
+#include "schallstadt.h"
+#elif LOC == MENGEN_LOC
+#include "mengen.h"
+#endif
+
 #define MAXSENSOR 2
 #define PROX_INT_LOW 300
 #define PROX_INT_HIGH 500
@@ -269,7 +283,7 @@ void initializeHTTP(void) {
 void sendData(int slots) {
   char data[80];
 
-  sprintf_P(data, PSTR("KEY=123&TICKETS=%d"), slots);
+  sprintf_P(data, PSTR("LOCATION=%s&KEY=%s&TICKETS=%d"), LOCATION, PASSWORD, slots);
 
   connectToNetwork();
 

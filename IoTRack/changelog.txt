@@ -24,3 +24,9 @@ V0.3.2
 - change status LED from D13 to D12 and toggle between input and output (LOW)
 - added a check for being in power down mode (in_power_down()) in order to avoid switching
   off the LED after it has been assigned the sleep state value
+
+V0.9.0
+- LOCATION is now the constant that signifies which version of the firmware
+  should be generated. In order to have a system that compiles, "example" is
+  the default location (with associated server and password in web/config/example.conf) and
+  a generated example.h include file.
