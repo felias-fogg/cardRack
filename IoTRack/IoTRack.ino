@@ -23,7 +23,7 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.9.0" 
+#define VERSION "0.9.2" 
 
 #define CALIB_SENSORS 0
 
@@ -41,9 +41,9 @@
 #include "mengen.h"
 #endif
 
-#define MAXSENSOR 2
-#define PROX_INT_LOW 300
-#define PROX_INT_HIGH 500
+#define MAXSENSOR 3
+#define PROX_INT_LOW 350
+#define PROX_INT_HIGH 450
 #define SLEEPTIME 60*120 // sleep time in seconds
 
 #if CALIB_SENSORS
@@ -75,9 +75,10 @@ uint16_t proximity_data = 0;
 uint8_t tickets;
 enum class Error { NONE, CONNECTION, SENSOR };
 volatile Error globalerror = Error::NONE;
+bool highvalue[MAXSENSOR]; // measured high sensor values
 
 
-const uint8_t sdapin[MAXSENSOR] = { PIN_PD1, PIN_PD3 }; //A1, A2
+const uint8_t sdapin[] = { PIN_PD1, PIN_PD3, PIN_PD4, PIN_PD5, PIN_PD7, PIN_PE1 }; //A1 .. D6
 const uint8_t sclpin = PIN_PD6; //A0
 const uint8_t irqpin = PIN_PE2; //D5 (note: this is a fully asynchronous pin!)
 const uint8_t ledpin = PIN_PA7; //D12
@@ -111,7 +112,7 @@ void setup() {
 
   // setup interrupt handling
   pinMode(irqpin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(irqpin), sensorIRS_callback, FALLING);
+  attachInterrupt(digitalPinToInterrupt(irqpin), sensorISR_callback, FALLING);
 #endif
 
   // setup extra timer for blinking
@@ -126,11 +127,19 @@ void setup() {
 void loop() {
   tickets = readSensors();
   Log.infof(F("#tickets: %d\n\r"),tickets);
+#if CALIB_SENSORS
   delay(1000);
-#if !CALIB_SENSORS
+#else
   sendData(tickets);
-  if (globalerror != Error::NONE) while (1);
-  delay(1000);
+  if (globalerror != Error::NONE) {
+    Lte.end();
+    while (1);
+  }
+  delay(2000);
+  if (!sameSensorReading()) {
+    Log.debug(F("Sensor reading has changed"));
+    return; // something has changed, evaluate again!
+  }
   LowPower.powerDown(SLEEPTIME);
 #endif
 }
@@ -157,7 +166,7 @@ bool in_power_down(void) {
 }
     
 // This is the IRS for the IRQ line of the sensors
-void sensorIRS_callback(void) {
+void sensorISR_callback(void) {
   isrflag = 1;
 }
 
@@ -234,6 +243,7 @@ int readSensors(void) {
 
   // Read the proximity value
   for (uint8_t i=0; i < MAXSENSOR; i++) {
+    highvalue[i] = false;
     flex.setPins(sdapin[i], sclpin);
     if ( !sensor.readProximity(proximity_data) ) {
       Log.errorf(F("Error reading proximity value from sensor %d\n\r"),i);
@@ -251,6 +261,7 @@ int readSensors(void) {
       }
     } else if (proximity_data > PROX_INT_HIGH) {
       high++;
+      highvalue[i] = true;
       if (!sensor.setProximityIntLowThreshold(PROX_INT_LOW)) {
 	Log.errorf(F("Error setting low proximity threshold for sensor %d\n\r"),i);
 	globalerror = Error::SENSOR;
@@ -266,6 +277,22 @@ int readSensors(void) {
     }
   }
   return high;
+}
+
+// check if the sensor has still the same value as when
+// measuring initially
+bool sameSensorReading() {
+  for (uint8_t i=0; i < MAXSENSOR; i++) {
+    flex.setPins(sdapin[i], sclpin);
+    sensor.clearProximityInt(); // clear interrupt again (just to be sure)
+    sensor.readProximity(proximity_data);
+    if  (proximity_data > PROX_INT_HIGH) {
+      if (!highvalue[i]) return false;
+    } else{
+      if (highvalue[i]) return false;
+    }
+  }
+  return true;
 }
 
 void initializeHTTP(void) {
@@ -309,7 +336,7 @@ void connectToNetwork() {
       globalerror = Error::CONNECTION;
       while (!Lte.begin()) { delay(30000); }
     }
-    globalerror = Error::NONE;
+    if (globalerror == Error::CONNECTION) globalerror = Error::NONE;
     Log.infof(F("Connected to operator: %s\r\n"),
 	      Lte.getOperator().c_str());
   }

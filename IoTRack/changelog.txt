@@ -26,7 +26,25 @@ V0.3.2
   off the LED after it has been assigned the sleep state value
 
 V0.9.0
-- LOCATION is now the constant that signifies which version of the firmware
+- LOC is now the constant that signifies which version of the firmware
   should be generated. In order to have a system that compiles, "example" is
-  the default location (with associated server and password in web/config/example.conf) and
-  a generated example.h include file.
+  the default location (with associated server and password in
+  web/config/example.conf) and a generated example.h include file.
+- The example web page contains now php code
+- In addition, there is a Wordpress code snippet that can be used to display
+  the number of available cards 
+
+V0.9.1
+- Fix: switch off LTE when there was an error and we stop.
+- Fix: reset globalerror in connectToNetwork only if the error
+  was an connection error
+
+
+V0.9.2
+- Fix: Addressed the potential race condition that could result from a hectic user
+  who takes out a card (values are changed) and then puts it back. This might
+  result in an early interrupt that might go undected and then later events will
+  not be registered because the interrupt is edge based.
+- Fix: In addition, all interrupt flags are cleared again when verifying the
+  initial values. This makes sure that it is impossible to enter sleep state
+  with a IRQ line that is low because of an proximity interrupt.
