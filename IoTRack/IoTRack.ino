@@ -23,7 +23,7 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.9.2" 
+#define VERSION "0.9.3" 
 
 #define CALIB_SENSORS 0
 
@@ -44,7 +44,7 @@
 #define MAXSENSOR 3
 #define PROX_INT_LOW 350
 #define PROX_INT_HIGH 450
-#define SLEEPTIME 60*120 // sleep time in seconds
+#define SLEEPTIME 60*60 // sleep time in seconds
 
 #if CALIB_SENSORS
 #define WEN 0    // no wait between two proximity tests
@@ -62,6 +62,7 @@
 #include <log.h>
 #include <lte.h>
 #include <low_power.h>
+#include <sequans_controller.h>
 #include "src/FlexWire.h"
 #include "src/myAPDS9930.h"
 
@@ -90,6 +91,7 @@ void setup() {
 
   Log.begin(115200);
   Log.setLogLevel(LogLevel::DEBUG);
+  Log.info("");
   Log.infof(F("IoTRack Version %s\n\r"), VERSION);
 
   // Make sure sensors are turned off
@@ -120,11 +122,15 @@ void setup() {
   TCB3.CTRLB = 0;
   TCB3.CTRLA = 5;
   TCB3.INTCTRL = 1;
+
+  // Connect to network
+  connectToNetwork();
   
   Log.info(F("Setup completed"));
 }
 
 void loop() {
+  logTime();
   tickets = readSensors();
   Log.infof(F("#tickets: %d\n\r"),tickets);
 #if CALIB_SENSORS
@@ -144,10 +150,29 @@ void loop() {
 #endif
 }
 
+void logTime(void) {
+  char response_buffer[64] = "";
+  char * strix;
+  // Get the time from the modem
+  if (SequansController.writeCommand(F("AT+CCLK?"),
+                                       response_buffer,
+                                       sizeof(response_buffer)) !=
+        ResponseResult::OK) {
+    Log.error(F("Command for retrieving modem time failed"));
+    Lte.end();
+    globalerror = Error::CONNECTION;
+    return;
+  }
+  strix = strchr(response_buffer, '"');
+  if (strix == NULL) strix = response_buffer;
+  Log.infof(F("Start of main loop: %s"), strix);
+}
+
 // periodic interrupt to signal data transfer and error conditions
 ISR(TCB3_INT_vect) {
   if (in_power_down()) {
     pinMode(ledpin, INPUT);
+    TCB3.INTFLAGS = 1;
     return;
   }
   if (cnt-- <= 0) {
@@ -250,6 +275,10 @@ int readSensors(void) {
       globalerror = Error::SENSOR;
     } 
     Log.debugf(F("Proximity (sensor %d): %d\n\r"), i, proximity_data);
+    if (proximity_data == 0) {
+      Log.errorf(F("Sensor value for ssensor %d is 0!\n\r"), i);
+      globalerror = Error::SENSOR;
+    }
     if (proximity_data < PROX_INT_LOW) {
       if (!sensor.setProximityIntLowThreshold(0)) {
 	Log.errorf(F("Error setting low proximity threshold for sensor %d\n\r"),i);
@@ -328,9 +357,10 @@ void sendData(int slots) {
  * achieved.
  */
 void connectToNetwork() {
-  int retry = 100; // connecttion tries before we go into error state
+  int retry = 100; // connection tries before we go into error state
   // If we already are connected, don't do anything
   if (!Lte.isConnected()) {
+    Log.info(F("Connect to network ..."));
     while (!Lte.begin() && retry--) {}
     if (!Lte.isConnected()) {
       globalerror = Error::CONNECTION;
