@@ -23,7 +23,7 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.9.3" 
+#define VERSION "0.9.4" 
 
 #define CALIB_SENSORS 0
 
@@ -42,8 +42,8 @@
 #endif
 
 #define MAXSENSOR 3
-#define PROX_INT_LOW 350
-#define PROX_INT_HIGH 450
+#define PROX_INT_LOW 250
+#define PROX_INT_HIGH 300
 #define SLEEPTIME 60*60 // sleep time in seconds
 
 #if CALIB_SENSORS
