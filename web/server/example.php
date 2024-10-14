@@ -6,8 +6,8 @@
     <body>
       <?php
         function read_card_num($noinfo = "no info") {
-                $a['url'] = "https://iot-rack.de/data/example.txt";
-		$a['default'] = "no info";
+                $a['url'] = "https://example.org/data/example.txt";
+		$a['default'] = $noinfo;
 		$a['singular'] = "%d";
 		$a['plural'] = "%d";
                 $headers = @get_headers($a['url']);

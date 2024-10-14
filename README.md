@@ -10,11 +10,15 @@ The IoT rack uses the IR sensors APDS-9930 for presence sensing and the AVR-IoT 
 
 ![Fritzing sketch](schematic/IoTRack.png)
 
+
+
+While the initial version was built on a Featherwing doubler, which looks quite ugly, I have now created a PCB. The KiCAD design data can be found in the [pcb](pcb) directory. 
+
 ### Software
 
 The software is quite simple. An interrupt is triggered if a card is removed or inserted. Then the sensors are polled to check the number of used slots. Finally, a short message is sent via an HTTPS POST command to a webserver, where the number of occupied slots is stored by a CGI script. One can use the stored number in a Javascript script to display it on a web page. 
 
-In order to monitor that everything is working, the AVR chip is woken up every 2 hours and the message with the number of occupied slots is sent. So, if the last received message is more than 3 hours old, the information will not be considered valid anymore.
+To monitor that everything is working, the AVR chip is woken up every 2 hours, and a message with the number of occupied slots is sent. If the last message received is more than 3 hours old, the information will not be considered valid anymore.
 
 ### Folders
 
@@ -24,3 +28,4 @@ The repository contains the following folders:
 * [pics](pics): Some photos
 * [schematic](schematic): A Fritzing schematic of the electronics
 * [web](web): CGI script, an example bash script to trigger the CGI script, and an example web page 
+* [pcb](pcb): KiCAD design files 
