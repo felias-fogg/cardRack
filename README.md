@@ -16,14 +16,17 @@ While the initial version was built on a Featherwing doubler, which looks quite 
 
 ### Software
 
-The software is quite simple. An interrupt is triggered if a card is removed or inserted. Then the sensors are polled to check the number of used slots. Finally, a short message is sent via an HTTPS POST command to a webserver, where the number of occupied slots is stored by a CGI script. One can use the stored number in a Javascript script to display it on a web page. 
+The software is quite simple. An interrupt is triggered if a card is removed or inserted. Then, the sensors are polled to check the number of used slots. Finally, a short message is sent via an HTTPS POST command to a webserver, where a CGI script stores the number of occupied slots. One can use the stored number in a Javascript script to display it on a web page. 
 
-To monitor that everything is working, the AVR chip is woken up every 2 hours, and a message with the number of occupied slots is sent. If the last message received is more than 3 hours old, the information will not be considered valid anymore.
+To monitor that everything is working, the AVR chip is woken up every 2 hours, and a message with the number of occupied slots is sent. If the last message received is over 3 hours old, the information will no longer be considered valid.
+
+### 3D Print Data
+
+The 3D print data for the physical card rack can be found on [printables.com](https://www.printables.com/model/1051824-iot-card-rack-badge-holder).
 
 ### Folders
 
 The repository contains the following folders:
-* [3D](3D): The 3D data for printing all parts of the rack
 * [IoTRack](IoTRack): The Arduino sketch
 * [pics](pics): Some photos
 * [schematic](schematic): A Fritzing schematic of the electronics
