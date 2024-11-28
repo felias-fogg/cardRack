@@ -23,7 +23,7 @@
 // D12 = PIN_PA7
 // D13 = PIN_PB2 (LED4, DBG1)
 
-#define VERSION "0.9.4" 
+#define VERSION "1.0.0" 
 
 #define CALIB_SENSORS 0
 
@@ -32,7 +32,7 @@
 #define SCHALLSTADT_LOC 1
 #define MENGEN_LOC 2
 
-#define LOC SCHALLSTADT_LOC
+#define LOC MENGEN_LOC
 #if LOC == EXAMPLE_LOC
 #include "example.h"
 #elif LOC == SCHALLSTADT_LOC
@@ -127,6 +127,9 @@ void setup() {
   connectToNetwork();
   
   Log.info(F("Setup completed"));
+#if !LEDSINK
+  pinMode(ledpin, OUTPUT);
+#endif
 }
 
 void loop() {
@@ -171,7 +174,11 @@ void logTime(void) {
 // periodic interrupt to signal data transfer and error conditions
 ISR(TCB3_INT_vect) {
   if (in_power_down()) {
+#if LEDSINK
     pinMode(ledpin, INPUT);
+#else
+    digitalWrite(ledpin, HIGH);
+#endif
     TCB3.INTFLAGS = 1;
     return;
   }
@@ -180,8 +187,13 @@ ISR(TCB3_INT_vect) {
     if (globalerror == Error::NONE) cnt = 6;
     else cnt = 1;
   }
+#if LEDSINK
   if (ledoff) pinMode(ledpin, OUTPUT);
   else pinMode(ledpin, INPUT);
+#else
+  if (ledoff) digitalWrite(ledpin, LOW);
+  else digitalWrite(ledpin, HIGH);
+#endif
   TCB3.INTFLAGS = 1;
 }
 

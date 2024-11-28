@@ -52,9 +52,14 @@ V0.9.3
 - ADDED: Print date/time when entering the loop
 - CHANGE: Change sleep time to one hour
 - CHANGE: Raise sensor error when sensor value is 0
-- CHANGE: Changed example.php so that it conforms wit the wordpress code snippet
+- CHANGE: Changed example.php so that it conforms with the wordpress code snippet
 - ADDED: The code snippet is now also a file in the server folder
 
 V0.9.4
 - CHANGED: Changed threshold values to 250/300 so that even black paper is reliably recognized
 - There is now a pcb directory in the repo, which contains pcb design data
+
+V1.0.0
+- ADDED: compile time constant LEDSINK, which needs to be set in the
+  location header file; should be 1 for the wiring as shown in the
+  Fritzing and 0 if the CardRack PCB is used.

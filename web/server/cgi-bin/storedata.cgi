@@ -28,6 +28,7 @@ then
     succ="1"
     echo $TICKETS > ../data/${LOCATION}.txt
     echo $(date +%s) >> ../data/${LOCATION}.txt
+    echo $(date "+%d.%m.%y %H:%M") $TICKETS >> ../data/${LOCATION}.log
 else
     succ="0"
 fi
